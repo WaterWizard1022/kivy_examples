@@ -1,52 +1,54 @@
-name: Build Kivy APKs with Buildozer
-
+name: Build
 on:
   push:
-    branches: [main, master]
+    branches-ignore:
+      - data
+      - gh-pages
+    tags:
+      - '**'
   pull_request:
-  workflow_dispatch:
+    branches-ignore:
+      - data
+      - gh-pages
 
 jobs:
+  # Build job. Builds app for Android with Buildozer
   build-android:
-    name: Build ${{ matrix.app }} for Android
+    name: Build for Android
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        app: [audio, graphs, multicore]
-    
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      
-      - name: Build ${{ matrix.app }} with Buildozer
+        with:
+          path: master
+
+      - name: Build with Buildozer
         uses: ArtemSBulgakov/buildozer-action@v1
         id: buildozer
         with:
-          command: buildozer android debug
-          workdir: ${{ matrix.app }}
+          repository_root: master
+          workdir: test_app
           buildozer_version: stable
-      
-      - name: Upload APK
+
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.app }}-apk
+          name: package
           path: ${{ steps.buildozer.outputs.filename }}
-          retention-days: 30
 
-  release:
-    name: Create Release
-    needs: build-android
-    runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')
-    
-    steps:
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-      
-      - name: Create Release
-        uses: softprops/action-gh-release@v1
+      - name: Checkout
+        uses: actions/checkout@v4
         with:
-          files: |
-            *-apk/*.apk
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          path: data
+          ref: data # Branch name
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.7
+          architecture: x64
+
+      - name: Push binary to data branch
+        if: github.event_name == 'push'
+        run: python master/.ci/move_binary.py "${{ steps.buildozer.outputs.filename }}" master data bin
